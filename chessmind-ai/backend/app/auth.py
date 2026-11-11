@@ -31,3 +31,9 @@ def current_user(creds: HTTPAuthorizationCredentials = Depends(bearer), db: Sess
     if not user:
         raise HTTPException(status_code=401, detail="Konto nie istnieje")
     return user
+
+
+def admin_user(user: User = Depends(current_user)):
+    if user.username.lower() != settings.admin_username.lower():
+        raise HTTPException(status_code=403, detail="Tryb administratora jest dostępny tylko dla konta Piniu")
+    return user
