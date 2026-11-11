@@ -14,7 +14,13 @@ export default function Home() {
   const [history,setHistory] = useState<any[]>([]);
   const [predictions,setPredictions] = useState<any[]>([]);
   const [evaluation,setEvaluation] = useState<any>(null);
-  const [analysisBusy,setAnalysisBusy] = useState(false);\n  const [training,setTraining] = useState(false);\n  const [difficulty,setDifficulty] = useState("easy");\n  const [trainingModel,setTrainingModel] = useState("balanced");\n  const [trainingBusy,setTrainingBusy] = useState(false);\n  const [coachText,setCoachText] = useState("Włącz trening, aby zagrać białymi przeciwko ChessMind AI.");\n  const [hint,setHint] = useState<any>(null);
+  const [analysisBusy,setAnalysisBusy] = useState(false);
+  const [training,setTraining] = useState(false);
+  const [difficulty,setDifficulty] = useState("easy");
+  const [trainingModel,setTrainingModel] = useState("balanced");
+  const [trainingBusy,setTrainingBusy] = useState(false);
+  const [coachText,setCoachText] = useState("Włącz trening, aby zagrać białymi przeciwko ChessMind AI.");
+  const [hint,setHint] = useState<any>(null);
   const [message,setMessage] = useState("Zaloguj się lub utwórz konto, aby zapisywać partie.");
   const [busy,setBusy] = useState(false);
   const analysisId = useRef(0);
