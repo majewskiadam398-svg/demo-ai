@@ -9,7 +9,7 @@ from sqlalchemy import select
 from .db import Base, engine, get_db
 from .models import User, Game
 from .schemas import Credentials, Token, GameIn, GameOut
-from .auth import hash_password, verify_password, make_token, current_user
+from .auth import hash_password, verify_password, make_token, current_user, admin_user
 from .ai import observe_game, predict_human_moves, evaluate_position
 
 Base.metadata.create_all(bind=engine)
@@ -41,7 +41,8 @@ def login(data: Credentials, db: Session = Depends(get_db)):
 
 @app.get("/me")
 def me(user: User = Depends(current_user)):
-    return {"id": user.id, "username": user.username}
+    from .config import settings
+    return {"id": user.id, "username": user.username, "is_admin": user.username.lower() == settings.admin_username.lower()}
 
 @app.get("/games", response_model=list[GameOut])
 def list_games(db: Session = Depends(get_db), user: User = Depends(current_user)):
@@ -76,7 +77,7 @@ def predict(payload: dict, db: Session = Depends(get_db), user: User = Depends(c
 
 
 @app.post("/ai/analyze")
-def analyze(payload: dict):
+def analyze(payload: dict, user: User = Depends(admin_user)):
     """Fast public live analysis endpoint powered by ChessMind's own search."""
     fen = payload.get("fen", "")
     try:
