@@ -1,9 +1,10 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const TRAINING_API = process.env.NEXT_PUBLIC_TRAINING_API_URL || API;
 export default function Home() {
   const [token,setToken] = useState("");
   const [username,setUsername] = useState("");
@@ -18,11 +19,23 @@ export default function Home() {
   const [isAdmin,setIsAdmin] = useState(false);
   const [nativeMoves,setNativeMoves] = useState<any[]>([]);
   const [activeTab,setActiveTab] = useState<"pulpit"|"partia"|"analiza"|"historia"|"konto">("pulpit");
+  const [training,setTraining] = useState(false);
+  const [difficulty,setDifficulty] = useState("easy");
+  const [trainingModel,setTrainingModel] = useState("balanced");
+  const [trainingBusy,setTrainingBusy] = useState(false);
+  const [coachText,setCoachText] = useState("Włącz trening, aby zagrać białymi przeciwko ChessMind AI.");
+  const [hint,setHint] = useState<any>(null);
 
   async function request(path:string, body?:any) {
     const res = await fetch(API+path,{method:body?"POST":"GET",headers:{"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{})},body:body?JSON.stringify(body):undefined});
     const data = await res.json().catch(()=>({}));
     if(!res.ok) throw new Error(data.detail || "Wystąpił błąd");
+    return data;
+  }
+  async function trainingRequest(path:string, body:any) {
+    const res = await fetch(TRAINING_API+path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(data.detail || "Błąd silnika treningowego");
     return data;
   }
   async function auth() {
@@ -33,7 +46,27 @@ export default function Home() {
     } catch(e:any) { setMessage(e.message); } finally { setBusy(false); }
   }
   useEffect(()=>{ if(token) { request("/me").then((me)=>setIsAdmin(!!me.is_admin)).catch((e)=>setMessage(e.message)); request("/games").then(setHistory).catch((e)=>setMessage(e.message)); } else { setIsAdmin(false); } },[token]);
+  useEffect(()=>{
+    if(!training || !token || game.turn() !== "b" || game.isGameOver()) return;
+    let cancelled = false;
+    setTrainingBusy(true);
+    trainingRequest("/ai/training-move",{fen:game.fen(),difficulty,model:trainingModel,training_games:history.slice(0,30).map((g:any)=>g.pgn)})
+      .then((data)=>{
+        if(cancelled || !data.uci) return;
+        const next = new Chess(game.fen());
+        next.move({from:data.uci.slice(0,2),to:data.uci.slice(2,4),promotion:data.uci[4] || "q"});
+        setGame(next); setCoachText(data.explanation + " Model: " + data.model + "."); setHint(null);
+      })
+      .catch((e:any)=>{if(!cancelled)setCoachText("Nie udało się wykonać ruchu AI: "+e.message);})
+      .finally(()=>{if(!cancelled)setTrainingBusy(false);});
+    return ()=>{cancelled=true;};
+  },[game,training,token,difficulty,trainingModel,history]);
+  async function askHint(){
+    try { const data=await trainingRequest("/ai/hint",{fen:game.fen(),training_games:history.slice(0,30).map((g:any)=>g.pgn)}); setHint(data); setCoachText(data.explanation); }
+    catch(e:any) { setCoachText("Nie udało się pobrać podpowiedzi: "+e.message); }
+  }
   function onDrop(source:string,target:string) {
+    if(training && game.turn() !== "w") return false;
     const next = new Chess(game.fen());
     try { next.move({from:source,to:target,promotion:"q"}); setGame(next); setPredictions([]); setNativeMoves([]); setEvaluation(null); return true; }
     catch { return false; }
@@ -69,10 +102,18 @@ export default function Home() {
     {token && activeTab==="pulpit" && <section className="welcome-strip"><div><span className="eyebrow">WITAJ W CHESSMIND</span><h2>Każdy ruch to nowa możliwość.</h2><p>Rozegraj partię, sprawdź pomysły i wróć do swoich postępów.</p></div><div className="welcome-stat"><b>{history.length}</b><span>ZAPISANE PARTIE</span></div><button className="primary" onClick={()=>{reset();setActiveTab("partia");}}>＋ Nowa partia</button></section>}
     {token && ["pulpit","partia","analiza"].includes(activeTab) && <section className="workspace">
       <div className="board-panel panel"><div className="section-head"><div><span className="eyebrow">{activeTab==="analiza"?"CENTRUM ANALIZY":"STUDIO GRY"}</span><h2>{activeTab==="analiza"?"Pozycja pod lupą":"Szachownica"}</h2></div><span className="live">● {game.isGameOver()?"KONIEC":game.isCheck()?"SZACH":"NA ŻYWO"}</span></div>
-      <div className="board"><Chessboard position={game.fen()} onPieceDrop={onDrop} boardWidth={Math.min(520, typeof window!=="undefined"?window.innerWidth-48:520)} /></div>
+      <div className="board"><Chessboard position={game.fen()} onPieceDrop={onDrop} customArrows={activeTab==="analiza"?[...nativeMoves.map((p:any)=>[p.from,p.to,"#14b8a6"]),...predictions.map((p:any)=>[p.from,p.to,"#60a5fa"]),...(hint?.uci?[[hint.uci.slice(0,2),hint.uci.slice(2,4),"#eab308"]]:[])]:[]} boardWidth={Math.min(520, typeof window!=="undefined"?window.innerWidth-48:520)} /></div>
       <div className="controls"><button className="ghost" onClick={()=>{const n=new Chess(game.fen());n.undo();setGame(n);}}>↶ Cofnij</button><button className="ghost" onClick={reset}>Nowa partia</button><button className="primary" onClick={analyze} disabled={!token}>Analizuj pozycję</button><button className="ghost" onClick={save} disabled={!token}>Zapisz partię</button></div>
       <div className="game-meta"><span>RUCH <b>{game.moveNumber()}</b></span><span>KOLEJ <b>{game.turn()==="w"?"BIAŁYCH":"CZARNYCH"}</b></span><span>STATUS <b>{game.isCheckmate()?"MAT":game.isCheck()?"SZACH":game.isDraw()?"REMIS":"W GRZE"}</b></span></div><p className="notice">{message}</p></div>
       <aside className="side">
+        {activeTab==="partia" && <div className="panel insight training-panel"><span className="eyebrow">NAUKA Z TRENEREM AI</span><h2>Tryb treningowy</h2><p className="muted">Ty grasz białymi, ChessMind AI czarnymi. Trener wyjaśnia ruchy po polsku.</p>
+          <button className={training?"ghost":"primary"} disabled={!token} onClick={()=>{const enabled=!training;setTraining(enabled);setGame(new Chess());setHint(null);setCoachText(enabled?"Zaczynamy! Zagraj pierwszy ruch białymi.":"Trening wyłączony.");}}>{training?"Zakończ trening":"Rozpocznij trening"}</button>
+          <label>Poziom trudności</label><select value={difficulty} onChange={e=>setDifficulty(e.target.value)}><option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option><option value="impossible">Impossible</option></select>
+          <label>Styl gry AI</label><select value={trainingModel} onChange={e=>setTrainingModel(e.target.value)}><option value="balanced">Zrównoważony</option><option value="aggressive">Taktyczny — atak</option><option value="solid">Pozycyjny — bezpieczny</option><option value="adaptive">Dopasowany do moich partii</option></select>
+          <button className="ghost" onClick={askHint} disabled={!token||game.isGameOver()||game.turn()!=="w"}>Podpowiedz mi ruch</button>
+          <div className="empty">{trainingBusy?"AI myśli…":coachText}</div>{hint&&<div className="prediction"><b>Podpowiedź: {hint.san}</b><small>{hint.explanation}</small></div>}
+          <p className="hint">Poziomy są orientacyjne. Model dopasowany korzysta z zapisanych partii i wzorców ruchów.</p>
+        </div>
         <div className="panel insight" style={{display:activeTab==="partia"?"none":"block"}}><span className="eyebrow">{isAdmin?"CHESSMIND NATIVE ENGINE":"CHESSMIND PREDICT"}</span><h2>{isAdmin?"Analiza silnika":"Możliwe decyzje"}</h2><p className="muted">{isAdmin?"Najlepsze ruchy wyliczone przez własny silnik ChessMind.":"Rozkład przewidywanych ludzkich ruchów dla aktualnej pozycji."}</p>
           {nativeMoves.length?nativeMoves.map((p,i)=><div className="prediction" key={p.san}><b>{i+1}. {p.san}</b><strong>{p.score>0?"+":""}{p.score}</strong><small>{p.quality} • {p.from} → {p.to}</small></div>):null}
           {predictions.length?predictions.map((p,i)=><div className="prediction" key={p.san}><b>{i+1}. {p.san}</b><div className="bar"><span style={{width:`${p.probability*100}%`}}/></div><strong>{(p.probability*100).toFixed(1)}%</strong></div>):(!nativeMoves.length?<div className="empty">Wykonaj analizę, aby zobaczyć wyniki.</div>:null)}
