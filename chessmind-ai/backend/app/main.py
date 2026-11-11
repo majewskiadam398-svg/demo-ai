@@ -9,7 +9,7 @@ from sqlalchemy import select
 from .db import Base, engine, get_db
 from .models import User, Game
 from .schemas import Credentials, Token, GameIn, GameOut
-from .auth import hash_password, verify_password, make_token, current_user
+from .auth import hash_password, verify_password, make_token, current_user, admin_user
 from .ai import observe_game, predict_human_moves, evaluate_position
 
 Base.metadata.create_all(bind=engine)
@@ -27,6 +27,9 @@ def register(data: Credentials, db: Session = Depends(get_db)):
     username = data.username.lower()
     if db.scalar(select(User).where(User.username == username)):
         raise HTTPException(409, "Ten nick jest już zajęty")
+    from .config import settings
+    if username == settings.admin_username.lower():
+        raise HTTPException(403, "Ten nick jest zarezerwowany dla administratora")
     user = User(username=username, password_hash=hash_password(data.password))
     db.add(user); db.commit(); db.refresh(user)
     return {"access_token": make_token(user.id)}
@@ -72,3 +75,20 @@ def predict(payload: dict, db: Session = Depends(get_db), user: User = Depends(c
             "evaluation": evaluate_position(board),
             "model": "pattern-frequency-v0",
             "warning": "Predykcje są eksperymentalne; brak jeszcze walidowanej skuteczności."}
+
+
+@app.post("/ai/analyze")
+def analyze(payload: dict, user: User = Depends(admin_user)):
+    """Administrator-only ChessMind native analysis."""
+    fen = payload.get("fen", "")
+    try:
+        board = chess.Board(fen)
+        if not board.is_valid():
+            raise ValueError()
+    except Exception:
+        raise HTTPException(400, "Nieprawidłowa pozycja FEN")
+    from .ai import analyze_position
+    result = analyze_position(board, depth=2)
+    result["engine"] = "ChessMind Native Engine"
+    result["note"] = "Własny eksperymentalny silnik heurystyczny ChessMind."
+    return result
