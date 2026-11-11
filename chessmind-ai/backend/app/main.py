@@ -10,7 +10,7 @@ from .db import Base, engine, get_db
 from .models import User, Game
 from .schemas import Credentials, Token, GameIn, GameOut
 from .auth import hash_password, verify_password, make_token, current_user, admin_user
-from .ai import observe_game, predict_human_moves, evaluate_position
+from .ai import observe_game, predict_human_moves, evaluate_position, choose_training_move
 
 Base.metadata.create_all(bind=engine)
 app = FastAPI(title="ChessMind AI API", version="0.1.0")
@@ -94,3 +94,38 @@ def analyze(payload: dict, user: User = Depends(admin_user)):
     result["engine"] = "ChessMind Native Engine"
     result["note"] = "Własny silnik heurystyczny ChessMind AI; szybka analiza orientacyjna, nie poziom Stockfisha."
     return result
+
+
+@app.post("/ai/training-move")
+def training_move(payload: dict, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    fen = payload.get("fen", "")
+    difficulty = payload.get("difficulty", "easy")
+    model = payload.get("model", "balanced")
+    if difficulty not in {"easy", "normal", "hard", "impossible"}:
+        raise HTTPException(400, "Nieznany poziom trudności")
+    if model not in {"balanced", "aggressive", "solid", "adaptive"}:
+        raise HTTPException(400, "Nieznany model gry")
+    try:
+        board = chess.Board(fen)
+        if not board.is_valid():
+            raise ValueError()
+    except Exception:
+        raise HTTPException(400, "Nieprawidłowa pozycja FEN")
+    result = choose_training_move(board, difficulty, model, db, user.id)
+    if result is None:
+        return {"move": None, "status": board.result(claim_draw=True)}
+    return result
+
+
+@app.post("/ai/hint")
+def training_hint(payload: dict, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    fen = payload.get("fen", "")
+    try:
+        board = chess.Board(fen)
+        if not board.is_valid() or board.is_game_over(claim_draw=True):
+            raise ValueError()
+    except Exception:
+        raise HTTPException(400, "Nieprawidłowa lub zakończona pozycja")
+    result = choose_training_move(board, "hard", "balanced", db, user.id)
+    return {"uci": result["uci"], "san": result["san"],
+            "explanation": "Podpowiedź: " + result["explanation"]}
