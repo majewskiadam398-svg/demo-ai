@@ -166,7 +166,8 @@ def _training_explanation(board: chess.Board, move: chess.Move) -> str:
     return f"Ruch {san} poprawia ustawienie figur. Zanim odpowiesz, sprawdź groźby przeciwnika, bezpieczeństwo własnego króla i czy możesz coś zdobyć."
 
 def choose_training_move(board: chess.Board, difficulty: str = "easy", model: str = "balanced",
-                         db: Session | None = None, user_id: int | None = None):
+                         db: Session | None = None, user_id: int | None = None,
+                         training_games: list[str] | None = None):
     """Select a move with ChessMind's own heuristic search; deliberately weaker modes add controlled noise."""
     import random
     settings = {
@@ -177,14 +178,31 @@ def choose_training_move(board: chess.Board, difficulty: str = "easy", model: st
     if board.is_game_over(claim_draw=True):
         return None
     legal = list(board.legal_moves)
-    if model == "adaptive" and db is not None and user_id is not None:
+    if model == "adaptive":
         key = position_key(board)
-        rows = db.query(MovePattern).filter_by(user_id=user_id, feature_key=key).all()
-        learned = {row.san: row.count for row in rows}
+        learned = {}
+        if db is not None and user_id is not None:
+            rows = db.query(MovePattern).filter_by(user_id=user_id, feature_key=key).all()
+            learned.update({row.san: row.count for row in rows})
+        if training_games:
+            import io
+            import chess.pgn
+            for pgn_text in training_games[:30]:
+                try:
+                    game = chess.pgn.read_game(io.StringIO(pgn_text))
+                    if game is None: continue
+                    sample = game.board()
+                    for past_move in game.mainline_moves():
+                        if position_key(sample) == key:
+                            san = sample.san(past_move)
+                            learned[san] = learned.get(san, 0) + 1
+                        sample.push(past_move)
+                except Exception:
+                    continue
         if learned:
             move = max(legal, key=lambda m: learned.get(board.san(m), 0))
             return {"uci": move.uci(), "san": board.san(move),
-                    "explanation": "Wybieram ruch zgodny z Twoimi wcześniejszymi partiami w tej pozycji. Model dopasowany uczy się na zapisanych przez Ciebie ruchach.",
+                    "explanation": "Wybieram ruch zgodny z Twoimi wcześniejszymi partiami. Model dopasowany analizuje zapisane partie i aktualizuje wzorce po kolejnych grach.",
                     "model": "Twój styl — model adaptacyjny"}
     candidates = []
     for move in legal:
