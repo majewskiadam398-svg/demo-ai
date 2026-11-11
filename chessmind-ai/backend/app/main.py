@@ -96,8 +96,10 @@ def analyze(payload: dict, user: User = Depends(admin_user)):
     return result
 
 
+
 @app.post("/ai/training-move")
-def training_move(payload: dict, db: Session = Depends(get_db), user: User = Depends(current_user)):
+def training_move(payload: dict):
+    """Public, stateless training move endpoint; account data stays in the main API."""
     fen = payload.get("fen", "")
     difficulty = payload.get("difficulty", "easy")
     model = payload.get("model", "balanced")
@@ -111,14 +113,18 @@ def training_move(payload: dict, db: Session = Depends(get_db), user: User = Dep
             raise ValueError()
     except Exception:
         raise HTTPException(400, "Nieprawidłowa pozycja FEN")
-    result = choose_training_move(board, difficulty, model, db, user.id)
+    games = payload.get("training_games", [])
+    if not isinstance(games, list) or any(not isinstance(x, str) for x in games):
+        raise HTTPException(400, "Nieprawidłowe dane partii")
+    from .ai import choose_training_move
+    result = choose_training_move(board, difficulty, model, training_games=games[:30])
     if result is None:
-        return {"move": None, "status": board.result(claim_draw=True)}
+        return {"uci": None, "status": board.result(claim_draw=True)}
     return result
 
 
 @app.post("/ai/hint")
-def training_hint(payload: dict, db: Session = Depends(get_db), user: User = Depends(current_user)):
+def training_hint(payload: dict):
     fen = payload.get("fen", "")
     try:
         board = chess.Board(fen)
@@ -126,6 +132,10 @@ def training_hint(payload: dict, db: Session = Depends(get_db), user: User = Dep
             raise ValueError()
     except Exception:
         raise HTTPException(400, "Nieprawidłowa lub zakończona pozycja")
-    result = choose_training_move(board, "hard", "balanced", db, user.id)
+    games = payload.get("training_games", [])
+    if not isinstance(games, list) or any(not isinstance(x, str) for x in games):
+        raise HTTPException(400, "Nieprawidłowe dane partii")
+    from .ai import choose_training_move
+    result = choose_training_move(board, "hard", "balanced", training_games=games[:30])
     return {"uci": result["uci"], "san": result["san"],
             "explanation": "Podpowiedź: " + result["explanation"]}
