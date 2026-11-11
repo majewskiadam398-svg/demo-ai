@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
 
@@ -16,9 +16,10 @@ export default function Home() {
   const [analysisBusy,setAnalysisBusy] = useState(false);
   const [message,setMessage] = useState("Zaloguj się lub utwórz konto, aby zapisywać partie.");
   const [busy,setBusy] = useState(false);
+  const analysisId = useRef(0);
 
-  async function request(path:string, body?:any) {
-    const res = await fetch(API+path,{method:body?"POST":"GET",headers:{"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{})},body:body?JSON.stringify(body):undefined});
+  async function request(path:string, body?:any, signal?:AbortSignal) {
+    const res = await fetch(API+path,{method:body?"POST":"GET",headers:{"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{})},body:body?JSON.stringify(body):undefined,signal});
     const data = await res.json().catch(()=>({}));
     if(!res.ok) throw new Error(data.detail || "Wystąpił błąd");
     return data;
@@ -32,24 +33,44 @@ export default function Home() {
   }
   useEffect(()=>{ if(token) request("/games").then(setHistory).catch((e)=>setMessage(e.message)); },[token]);
 
-  async function analyzeFen(fen:string) {
+  async function analyzeFen(fen:string, id:number, signal:AbortSignal, didTimeout:()=>boolean) {
     setAnalysisBusy(true);
     try {
-      const data = await request("/ai/analyze",{fen});
+      const data = await request("/ai/analyze",{fen},signal);
+      if(id !== analysisId.current) return;
       setPredictions(data.best_moves || []);
       setEvaluation(data);
+      setMessage("Analiza aktualna.");
     } catch(e:any) {
+      if(id !== analysisId.current) return;
       setPredictions([]);
       setEvaluation(null);
-      setMessage("Analiza: "+e.message);
-    } finally { setAnalysisBusy(false); }
+      setMessage(didTimeout()
+        ? "Analiza przekroczyła 15 sekund. Spróbuj wykonać ruch ponownie."
+        : e.name === "AbortError" ? "Analiza została anulowana." : "Analiza: "+e.message);
+    } finally {
+      if(id === analysisId.current) setAnalysisBusy(false);
+    }
   }
 
-  // Automatic analysis after every position change; no button is needed.
+  // One request per latest position. Old requests are aborted and stale responses ignored.
   useEffect(()=>{
+    const id = ++analysisId.current;
     const fen = game.fen();
-    const timer = setTimeout(()=>{ analyzeFen(fen); },250);
-    return ()=>clearTimeout(timer);
+    const controller = new AbortController();
+    let timedOut = false;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const debounce = setTimeout(()=>{
+      timeout = setTimeout(()=>{ timedOut = true; controller.abort(); },15000);
+      void analyzeFen(fen,id,controller.signal,()=>timedOut).finally(()=>{
+        if(timeout) clearTimeout(timeout);
+      });
+    },250);
+    return ()=>{
+      clearTimeout(debounce);
+      if(timeout) clearTimeout(timeout);
+      controller.abort();
+    };
   },[game]);
 
   function onDrop(source:string,target:string) {
@@ -59,7 +80,7 @@ export default function Home() {
   }
   async function save() {
     try {
-      const pgn=game.pgn() || '[Event "ChessMind AI"]\n\n*';
+      const pgn=game.pgn() || '[Event "ChessMind AI"]\\n\\n*';
       const saved=await request("/games",{pgn,result:game.isCheckmate()?(game.turn()==="w"?"0-1":"1-0"):"*"});
       setHistory([saved,...history]); setMessage("Partia zapisana na koncie.");
     } catch(e:any){setMessage(e.message);}
@@ -79,7 +100,7 @@ export default function Home() {
       <p className="notice">{analysisBusy?"ChessMind analizuje pozycję…":message}</p></div>
       <aside className="side">
         <div className="panel insight"><span className="eyebrow">CHESSMIND NATIVE ENGINE</span><h2>Analiza na żywo</h2><p className="muted">Własne przeszukiwanie wariantów i ocena pozycji. Odświeża się automatycznie po każdym ruchu.</p>
-          {predictions.length?predictions.map((p:any)=><div className="prediction" key={p.san}><b>{p.rank}. {p.san}</b><strong>{p.score>0?"+":""}{p.score}</strong><small>{p.quality}</small></div>):<div className="empty">{analysisBusy?"Liczenie wariantów…":"Brak legalnych ruchów do analizy."}</div>}
+          {predictions.length?predictions.map((p:any)=><div className="prediction" key={p.san}><b>{p.rank}. {p.san}</b><strong>{p.score>0?"+":""}{p.score}</strong><small>{p.quality}</small></div>):<div className="empty">{analysisBusy?"Liczenie wariantów…":evaluation?"Brak propozycji dla tej pozycji.":"Oczekiwanie na analizę pozycji."}</div>}
           {evaluation&&<div className="eval"><span>Ocena pozycji (białe)</span><b>{evaluation.evaluation_cp>0?"+":""}{(evaluation.evaluation_cp/100).toFixed(2)}</b><small>Głębokość: {evaluation.depth} • {evaluation.engine}</small></div>}
         </div>
         <div className="panel history"><span className="eyebrow">TWOJE ARCHIWUM</span><h2>Ostatnie partie</h2>{history.length?history.slice(0,5).map(g=><div className="game-row" key={g.id}><span>Partia #{g.id}</span><b>{g.result}</b></div>):<div className="empty">Zapisane partie pojawią się tutaj.</div>}</div>
