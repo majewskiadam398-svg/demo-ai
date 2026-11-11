@@ -79,7 +79,34 @@ export default function Home() {
     };
   },[game,isAdmin]);
 
+  useEffect(()=>{
+    if(!training || !token || game.turn() !== "b" || game.isGameOver()) return;
+    let cancelled = false;
+    setTrainingBusy(true);
+    request("/ai/training-move",{fen:game.fen(),difficulty,model:trainingModel})
+      .then((data)=>{
+        if(cancelled || !data.uci) return;
+        const next = new Chess(game.fen());
+        next.move({from:data.uci.slice(0,2),to:data.uci.slice(2,4),promotion:data.uci[4] || "q"});
+        setGame(next);
+        setCoachText(data.explanation + " Model: " + data.model + ".");
+        setHint(null);
+      })
+      .catch((e:any)=>{if(!cancelled)setCoachText("Nie udało się wykonać ruchu AI: "+e.message);})
+      .finally(()=>{if(!cancelled)setTrainingBusy(false);});
+    return ()=>{cancelled=true;};
+  },[game,training,token,difficulty,trainingModel]);
+
+  async function askHint(){
+    try {
+      const data=await request("/ai/hint",{fen:game.fen()});
+      setHint(data);
+      setCoachText(data.explanation);
+    } catch(e:any) { setCoachText("Nie udało się pobrać podpowiedzi: "+e.message); }
+  }
+
   function onDrop(source:string,target:string) {
+    if(training && game.turn() !== "w") return false;
     const next = new Chess(game.fen());
     try { next.move({from:source,to:target,promotion:"q"}); setGame(next); return true; }
     catch { return false; }
@@ -105,6 +132,15 @@ export default function Home() {
       <div className="controls"><button className="ghost" onClick={()=>{const n=new Chess(game.fen());n.undo();setGame(n);}}>↶ Cofnij</button><button className="ghost" onClick={reset}>Nowa partia</button><button className="ghost" onClick={save} disabled={!token}>Zapisz partię</button></div>
       <p className="notice">{analysisBusy?"ChessMind analizuje pozycję…":message}</p></div>
       <aside className="side">
+        <div className="panel insight"><span className="eyebrow">NAUKA Z TRENEREM AI</span><h2>Tryb treningowy</h2><p className="muted">Ty grasz białymi, ChessMind AI czarnymi. Trener wyjaśnia ruchy po polsku.</p>
+          <button className={training?"ghost":"primary"} onClick={()=>{setTraining(!training);setGame(new Chess());setHint(null);setCoachText(!training?"Zaczynamy! Zagraj pierwszy ruch białymi.":"Trening wyłączony.");}}>{training?"Zakończ trening":"Rozpocznij trening"}</button>
+          <label>Poziom trudności</label><select value={difficulty} onChange={e=>setDifficulty(e.target.value)}><option value="easy">Easy — około 100 Elo</option><option value="normal">Normal — około 500 Elo</option><option value="hard">Hard — około 1000 Elo</option><option value="impossible">Impossible — cel 3000 Elo</option></select>
+          <label>Model szachowy</label><select value={trainingModel} onChange={e=>setTrainingModel(e.target.value)}><option value="balanced">Zrównoważony</option><option value="aggressive">Taktyczny — szuka ataku</option><option value="solid">Pozycyjny — gra bezpiecznie</option><option value="adaptive">Dopasowany do mnie — uczy się z moich zapisanych partii</option></select>
+          <button className="ghost" onClick={askHint} disabled={!token || game.isGameOver() || game.turn()!=="w"}>Podpowiedz mi ruch</button>
+          <div className="empty">{trainingBusy?"AI myśli…":coachText}</div>
+          {hint&&<div className="prediction"><b>Podpowiedź: {hint.san}</b><small>{hint.explanation}</small></div>}
+          <p className="hint">Model dopasowany korzysta z ruchów zarejestrowanych w Twoich zapisanych partiach. Nie trenuje jeszcze wag sieci neuronowej.</p>
+        </div>
         {isAdmin ? <div className="panel insight"><span className="eyebrow">PANEL ADMINISTRATORA</span><h2>Analiza na żywo</h2><p className="muted">Własne przeszukiwanie wariantów i ocena pozycji. Odświeża się automatycznie po każdym ruchu.</p>
           {predictions.length?predictions.map((p:any)=><div className="prediction" key={p.san}><b>{p.rank}. {p.san}</b><strong>{p.score>0?"+":""}{p.score}</strong><small>{p.quality}</small></div>):<div className="empty">{analysisBusy?"Liczenie wariantów…":evaluation?"Brak propozycji dla tej pozycji.":"Oczekiwanie na analizę pozycji."}</div>}
           {evaluation&&<div className="eval"><span>Ocena pozycji (białe)</span><b>{evaluation.evaluation_cp>0?"+":""}{(evaluation.evaluation_cp/100).toFixed(2)}</b><small>Głębokość: {evaluation.depth} • {evaluation.engine}</small></div>}
