@@ -14,7 +14,7 @@ export default function Home() {
   const [history,setHistory] = useState<any[]>([]);
   const [predictions,setPredictions] = useState<any[]>([]);
   const [evaluation,setEvaluation] = useState<any>(null);
-  const [analysisBusy,setAnalysisBusy] = useState(false);
+  const [analysisBusy,setAnalysisBusy] = useState(false);\n  const [training,setTraining] = useState(false);\n  const [difficulty,setDifficulty] = useState("easy");\n  const [trainingModel,setTrainingModel] = useState("balanced");\n  const [trainingBusy,setTrainingBusy] = useState(false);\n  const [coachText,setCoachText] = useState("Włącz trening, aby zagrać białymi przeciwko ChessMind AI.");\n  const [hint,setHint] = useState<any>(null);
   const [message,setMessage] = useState("Zaloguj się lub utwórz konto, aby zapisywać partie.");
   const [busy,setBusy] = useState(false);
   const analysisId = useRef(0);
@@ -91,7 +91,7 @@ export default function Home() {
       setHistory([saved,...history]); setMessage("Partia zapisana na koncie.");
     } catch(e:any){setMessage(e.message);}
   }
-  function reset(){setGame(new Chess());setPredictions([]);setEvaluation(null);}
+  function reset(){setGame(new Chess());setPredictions([]);setEvaluation(null);setHint(null);setCoachText(training?"Nowa partia treningowa. Zagraj pierwszy ruch.":coachText);}
   const arrows = predictions.map((p:any)=>[p.from,p.to,p.color] as [any, any, any]);
   return <main className="shell">
     <header><div className="brand"><span className="mark">♞</span><div><b>ChessMind <i>AI</i></b><small>ANALIZA • PREDYKCJA • ROZWÓJ</small></div></div><span className="status">● SYSTEM MVP</span></header>
