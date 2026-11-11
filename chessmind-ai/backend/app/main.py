@@ -78,6 +78,51 @@ def predict(payload: dict, db: Session = Depends(get_db), user: User = Depends(c
             "warning": "Predykcje są eksperymentalne; brak jeszcze walidowanej skuteczności."}
 
 
+@app.post("/ai/training-move")
+def training_move(payload: dict):
+    """Publiczny, bezstanowy ruch trenera ChessMind AI."""
+    fen = payload.get("fen", "")
+    difficulty = payload.get("difficulty", "easy")
+    model = payload.get("model", "balanced")
+    if difficulty not in {"easy", "normal", "hard", "impossible"}:
+        raise HTTPException(400, "Nieznany poziom trudności")
+    if model not in {"balanced", "aggressive", "solid", "adaptive"}:
+        raise HTTPException(400, "Nieznany styl gry")
+    try:
+        board = chess.Board(fen)
+        if not board.is_valid():
+            raise ValueError()
+    except Exception:
+        raise HTTPException(400, "Nieprawidłowa pozycja FEN")
+    games = payload.get("training_games", [])
+    if not isinstance(games, list) or any(not isinstance(item, str) for item in games):
+        raise HTTPException(400, "Nieprawidłowe dane partii")
+    from .ai import choose_training_move
+    result = choose_training_move(board, difficulty, model, training_games=games[:30])
+    if result is None:
+        return {"uci": None, "status": board.result(claim_draw=True)}
+    return result
+
+
+@app.post("/ai/hint")
+def training_hint(payload: dict):
+    """Podpowiedź ruchu dla bieżącej pozycji."""
+    fen = payload.get("fen", "")
+    try:
+        board = chess.Board(fen)
+        if not board.is_valid() or board.is_game_over(claim_draw=True):
+            raise ValueError()
+    except Exception:
+        raise HTTPException(400, "Nieprawidłowa lub zakończona pozycja")
+    games = payload.get("training_games", [])
+    if not isinstance(games, list) or any(not isinstance(item, str) for item in games):
+        raise HTTPException(400, "Nieprawidłowe dane partii")
+    from .ai import choose_training_move
+    result = choose_training_move(board, "hard", "balanced", training_games=games[:30])
+    return {"uci": result["uci"], "san": result["san"],
+            "explanation": "Podpowiedź: " + result["explanation"]}
+
+
 @app.post("/ai/analyze")
 def analyze(payload: dict, user: User = Depends(admin_user)):
     """Administrator-only ChessMind native analysis."""
