@@ -35,7 +35,7 @@ export default function Home() {
   useEffect(()=>{ if(token) { request("/me").then((me)=>setIsAdmin(!!me.is_admin)).catch((e)=>setMessage(e.message)); request("/games").then(setHistory).catch((e)=>setMessage(e.message)); } else { setIsAdmin(false); } },[token]);
   function onDrop(source:string,target:string) {
     const next = new Chess(game.fen());
-    try { next.move({from:source,to:target,promotion:"q"}); setGame(next); setPredictions([]); return true; }
+    try { next.move({from:source,to:target,promotion:"q"}); setGame(next); setPredictions([]); setNativeMoves([]); setEvaluation(null); return true; }
     catch { return false; }
   }
   async function analyze() {
@@ -83,7 +83,7 @@ export default function Home() {
       </aside>
     </section>}
     {token && activeTab==="historia" && <section className="panel archive-page"><span className="eyebrow">TWOJE ARCHIWUM</span><h2>Historia partii</h2><p className="muted">Wszystkie partie zapisane na Twoim koncie.</p>{history.length?history.map((g:any)=><div className="archive-row" key={g.id}><div><b>Partia #{g.id}</b><small>{g.created_at?new Date(g.created_at).toLocaleString("pl-PL"):"Zapisana partia"}</small></div><strong>{g.result}</strong></div>):<div className="empty">Nie masz jeszcze zapisanych partii. Zagraj i wybierz „Zapisz partię”.</div>}</section>}
-    {token && activeTab==="konto" && <section className="profile-grid"><div className="panel profile-card"><span className="eyebrow">TWÓJ PROFIL</span><div className="profile-avatar">♞</div><h2>{username}</h2><p>{isAdmin?"Administrator ChessMind":"Zawodnik ChessMind"}</p><span className="role-pill">{isAdmin?"DOSTĘP ADMINISTRATORA":"KONTO GRACZA"}</span><button className="ghost" onClick={()=>{setToken("");setHistory([]);setActiveTab("pulpit");}}>Wyloguj się</button></div><div className="panel profile-card"><span className="eyebrow">TWOJE STATYSTYKI</span><div className="profile-stats"><div><b>{history.length}</b><span>ZAPISANE PARTIE</span></div><div><b>{game.history().length}</b><span>RUCHY W TEJ PARTII</span></div></div><h3>Mała wskazówka</h3><p className="muted">Po każdej partii zapisz ją w archiwum. Z czasem łatwiej zauważysz powtarzające się motywy i decyzje.</p></div></section>
-    <footer>CHESSMIND AI <span>Wersja 0.1 • Model predykcji eksperymentalny</span></footer>
+    {token && activeTab==="konto" && <section className="profile-grid"><div className="panel profile-card"><span className="eyebrow">TWÓJ PROFIL</span><div className="profile-avatar">♞</div><h2>{username}</h2><p>{isAdmin?"Administrator ChessMind":"Zawodnik ChessMind"}</p><span className="role-pill">{isAdmin?"DOSTĘP ADMINISTRATORA":"KONTO GRACZA"}</span><button className="ghost" onClick={()=>{setToken("");setHistory([]);setActiveTab("pulpit");}}>Wyloguj się</button></div><div className="panel profile-card"><span className="eyebrow">TWOJE STATYSTYKI</span><div className="profile-stats"><div><b>{history.length}</b><span>ZAPISANE PARTIE</span></div><div><b>{game.history().length}</b><span>RUCHY W TEJ PARTII</span></div></div><h3>Mała wskazówka</h3><p className="muted">Po każdej partii zapisz ją w archiwum. Z czasem łatwiej zauważysz powtarzające się motywy i decyzje.</p></div></section>}
+    <footer>CHESSMIND AI <span>Twoja przestrzeń do szachowego rozwoju</span></footer>
   </main>;
 }
