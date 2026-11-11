@@ -63,3 +63,16 @@ footer{border-top-color:rgba(145,174,157,.16)}
 .training-panel label{display:block;color:#b8c6be;font-size:11px;margin-top:12px}
 .training-panel .analysis-actions{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
 @media(max-width:600px){.training-status{margin-top:12px}.origin-note{width:100%}}
+
+
+/* Dedicated training hints panel */
+.hint-studio{margin-top:16px;padding:16px;border:1px solid rgba(182,227,108,.24);border-radius:14px;background:linear-gradient(135deg,rgba(182,227,108,.09),rgba(8,20,21,.62))}
+.hint-studio-head{display:flex;align-items:center;justify-content:space-between;gap:14px}
+.hint-studio-head>div{display:flex;flex-direction:column;gap:6px;min-width:0}
+.hint-studio-head>div>b{font-size:13px;color:#e2eddf}
+.hint-studio-head small{font-size:11px;line-height:1.5;color:#91a69b}
+.hint-studio-head .primary{flex-shrink:0;font-size:11px}
+.hint-result{margin-top:13px;padding:13px;border-radius:10px;background:rgba(3,12,14,.58);border:1px solid rgba(182,227,108,.16)}
+.hint-result b{font-size:12px;color:#d0f58c}
+.hint-result p{margin:7px 0 0;color:#bdcbc2;font-size:12px;line-height:1.7}
+@media(max-width:520px){.hint-studio-head{align-items:stretch;flex-direction:column}.hint-studio-head .primary{width:100%}}
