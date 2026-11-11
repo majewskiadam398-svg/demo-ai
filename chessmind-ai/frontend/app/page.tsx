@@ -59,7 +59,7 @@ export default function Home() {
   }
   async function save() {
     try {
-      const pgn=game.pgn() || '[Event "ChessMind AI"]\\n\\n*';
+      const pgn=game.pgn() || '[Event "ChessMind AI"]\n\n*';
       const saved=await request("/games",{pgn,result:game.isCheckmate()?(game.turn()==="w"?"0-1":"1-0"):"*"});
       setHistory([saved,...history]); setMessage("Partia zapisana na koncie.");
     } catch(e:any){setMessage(e.message);}
