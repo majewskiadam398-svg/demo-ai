@@ -125,7 +125,7 @@ export default function Home() {
     } catch(e:any){setMessage(e.message);}
   }
   function reset(){setGame(new Chess());setPredictions([]);setEvaluation(null);setHint(null);setCoachText(training?"Nowa partia treningowa. Zagraj pierwszy ruch.":coachText);}
-  const arrows = predictions.map((p:any)=>[p.from,p.to,p.color] as [any, any, any]);
+  const arrows = [...predictions.map((p:any)=>[p.from,p.to,p.color] as [any, any, any]), ...(hint?.uci ? [[hint.uci.slice(0,2),hint.uci.slice(2,4),"#eab308"] as [any,any,any]] : [])];
   return <main className="shell">
     <header><div className="brand"><span className="mark">♞</span><div><b>ChessMind <i>AI</i></b><small>ANALIZA • PREDYKCJA • ROZWÓJ</small></div></div><span className="status">● SYSTEM MVP</span></header>
     <section className="hero"><div><p className="eyebrow">TWOJE SZACHY. GŁĘBSZE ZROZUMIENIE.</p><h1>Myśl kilka ruchów<br/><em>przed przeciwnikiem.</em></h1><p className="sub">Analizuj partie, poznawaj wzorce ludzkich decyzji i buduj własny profil treningowy.</p></div>
@@ -139,13 +139,13 @@ export default function Home() {
       <p className="notice">{analysisBusy?"ChessMind analizuje pozycję…":message}</p></div>
       <aside className="side">
         <div className="panel insight"><span className="eyebrow">NAUKA Z TRENEREM AI</span><h2>Tryb treningowy</h2><p className="muted">Ty grasz białymi, ChessMind AI czarnymi. Trener wyjaśnia ruchy po polsku.</p>
-          <button className={training?"ghost":"primary"} onClick={()=>{setTraining(!training);setGame(new Chess());setHint(null);setCoachText(!training?"Zaczynamy! Zagraj pierwszy ruch białymi.":"Trening wyłączony.");}}>{training?"Zakończ trening":"Rozpocznij trening"}</button>
-          <label>Poziom trudności</label><select value={difficulty} onChange={e=>setDifficulty(e.target.value)}><option value="easy">Easy — około 100 Elo</option><option value="normal">Normal — około 500 Elo</option><option value="hard">Hard — około 1000 Elo</option><option value="impossible">Impossible — cel 3000 Elo</option></select>
+          <button className={training?"ghost":"primary"} disabled={!token} onClick={()=>{setTraining(!training);setGame(new Chess());setHint(null);setCoachText(!training?"Zaczynamy! Zagraj pierwszy ruch białymi.":"Trening wyłączony.");}}>{training?"Zakończ trening":"Rozpocznij trening"}</button>
+          <label>Poziom trudności</label><select value={difficulty} onChange={e=>setDifficulty(e.target.value)}><option value="easy">Easy — około 100 Elo</option><option value="normal">Normal — około 500 Elo</option><option value="hard">Hard — około 1000 Elo</option><option value="impossible">Impossible — maksymalna siła (cel 3000 Elo)</option></select>
           <label>Model szachowy</label><select value={trainingModel} onChange={e=>setTrainingModel(e.target.value)}><option value="balanced">Zrównoważony</option><option value="aggressive">Taktyczny — szuka ataku</option><option value="solid">Pozycyjny — gra bezpiecznie</option><option value="adaptive">Dopasowany do mnie — uczy się z moich zapisanych partii</option></select>
           <button className="ghost" onClick={askHint} disabled={!token || game.isGameOver() || game.turn()!=="w"}>Podpowiedz mi ruch</button>
           <div className="empty">{trainingBusy?"AI myśli…":coachText}</div>
           {hint&&<div className="prediction"><b>Podpowiedź: {hint.san}</b><small>{hint.explanation}</small></div>}
-          <p className="hint">Model dopasowany korzysta z ruchów zarejestrowanych w Twoich zapisanych partiach. Nie trenuje jeszcze wag sieci neuronowej.</p>
+          <p className="hint">Poziomy Elo są orientacyjnymi celami, nie wynikiem oficjalnego testu. „Impossible” używa najsilniejszego ustawienia naszego eksperymentalnego silnika — nie ma jeszcze potwierdzonych 3000 Elo. Model dopasowany korzysta z Twoich zapisanych partii i na razie uczy się wzorców ruchów, a nie wag sieci neuronowej.</p>
         </div>
         {isAdmin ? <div className="panel insight"><span className="eyebrow">PANEL ADMINISTRATORA</span><h2>Analiza na żywo</h2><p className="muted">Własne przeszukiwanie wariantów i ocena pozycji. Odświeża się automatycznie po każdym ruchu.</p>
           {predictions.length?predictions.map((p:any)=><div className="prediction" key={p.san}><b>{p.rank}. {p.san}</b><strong>{p.score>0?"+":""}{p.score}</strong><small>{p.quality}</small></div>):<div className="empty">{analysisBusy?"Liczenie wariantów…":evaluation?"Brak propozycji dla tej pozycji.":"Oczekiwanie na analizę pozycji."}</div>}
