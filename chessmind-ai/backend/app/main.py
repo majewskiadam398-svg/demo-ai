@@ -28,6 +28,9 @@ def register(data: Credentials, db: Session = Depends(get_db)):
     username = data.username.lower()
     if db.scalar(select(User).where(User.username == username)):
         raise HTTPException(409, "Ten nick jest już zajęty")
+    from .config import settings
+    if username == settings.admin_username.lower():
+        raise HTTPException(403, "Ten nick jest zarezerwowany dla administratora")
     user = User(username=username, password_hash=hash_password(data.password))
     db.add(user); db.commit(); db.refresh(user)
     return {"access_token": make_token(user.id)}
@@ -78,7 +81,7 @@ def predict(payload: dict, db: Session = Depends(get_db), user: User = Depends(c
 
 @app.post("/ai/analyze")
 def analyze(payload: dict, user: User = Depends(admin_user)):
-    """Fast public live analysis endpoint powered by ChessMind's own search."""
+    """Admin-only live analysis endpoint powered by ChessMind's own search."""
     fen = payload.get("fen", "")
     try:
         board = chess.Board(fen)
