@@ -204,7 +204,7 @@ def choose_training_move(board: chess.Board, difficulty: str = "easy", model: st
         for item in candidates:
             move = item[0]
             board.push(move)
-            attacked = board.is_check() or any(board.is_attacked_by(board.turn, sq) for sq in [move.to_square])
+            attacked = any(board.is_attacked_by(board.turn, sq) for sq in [move.to_square])
             board.pop()
             if not attacked: safe.append(item)
         if safe: pool = safe[:max(1, len(pool))]
