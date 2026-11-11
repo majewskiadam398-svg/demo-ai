@@ -77,7 +77,7 @@ def predict(payload: dict, db: Session = Depends(get_db), user: User = Depends(c
 
 @app.post("/ai/analyze")
 def analyze(payload: dict):
-    """Public live analysis endpoint powered by ChessMind's own search."""
+    """Fast public live analysis endpoint powered by ChessMind's own search."""
     fen = payload.get("fen", "")
     try:
         board = chess.Board(fen)
@@ -86,7 +86,7 @@ def analyze(payload: dict):
     except Exception:
         raise HTTPException(400, "Nieprawidłowa pozycja FEN")
     from .ai import analyze_position
-    result = analyze_position(board, depth=3)
+    result = analyze_position(board, depth=2)
     result["engine"] = "ChessMind Native Engine"
-    result["note"] = "Własny silnik heurystyczny ChessMind AI; wynik orientacyjny, nie poziom Stockfisha."
+    result["note"] = "Własny silnik heurystyczny ChessMind AI; szybka analiza orientacyjna, nie poziom Stockfisha."
     return result
