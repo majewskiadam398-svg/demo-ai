@@ -6,6 +6,7 @@ import { Chessboard } from "react-chessboard";
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 export default function Home() {
   const [token,setToken] = useState("");
+  const [isAdmin,setIsAdmin] = useState(false);
   const [username,setUsername] = useState("");
   const [password,setPassword] = useState("");
   const [mode,setMode] = useState<"login"|"register">("login");
@@ -31,7 +32,11 @@ export default function Home() {
       setToken(data.access_token); setMessage("Zalogowano pomyślnie.");
     } catch(e:any) { setMessage(e.message); } finally { setBusy(false); }
   }
-  useEffect(()=>{ if(token) request("/games").then(setHistory).catch((e)=>setMessage(e.message)); },[token]);
+  useEffect(()=>{
+    if(!token){setIsAdmin(false);return;}
+    request("/me").then((data)=>setIsAdmin(data.is_admin === true)).catch((e)=>{setIsAdmin(false);setMessage(e.message);});
+    request("/games").then(setHistory).catch((e)=>setMessage(e.message));
+  },[token]);
 
   async function analyzeFen(fen:string, id:number, signal:AbortSignal, didTimeout:()=>boolean) {
     setAnalysisBusy(true);
@@ -55,6 +60,7 @@ export default function Home() {
 
   // One request per latest position. Old requests are aborted and stale responses ignored.
   useEffect(()=>{
+    if(!isAdmin){setPredictions([]);setEvaluation(null);setAnalysisBusy(false);return;}
     const id = ++analysisId.current;
     const fen = game.fen();
     const controller = new AbortController();
@@ -71,7 +77,7 @@ export default function Home() {
       if(timeout) clearTimeout(timeout);
       controller.abort();
     };
-  },[game]);
+  },[game,isAdmin]);
 
   function onDrop(source:string,target:string) {
     const next = new Chess(game.fen());
@@ -91,18 +97,19 @@ export default function Home() {
     <header><div className="brand"><span className="mark">♞</span><div><b>ChessMind <i>AI</i></b><small>ANALIZA • PREDYKCJA • ROZWÓJ</small></div></div><span className="status">● SYSTEM MVP</span></header>
     <section className="hero"><div><p className="eyebrow">TWOJE SZACHY. GŁĘBSZE ZROZUMIENIE.</p><h1>Myśl kilka ruchów<br/><em>przed przeciwnikiem.</em></h1><p className="sub">Analizuj partie, poznawaj wzorce ludzkich decyzji i buduj własny profil treningowy.</p></div>
     {!token ? <div className="auth panel"><div className="tabs"><button className={mode==="login"?"active":""} onClick={()=>setMode("login")}>Logowanie</button><button className={mode==="register"?"active":""} onClick={()=>setMode("register")}>Rejestracja</button></div><label>Nick użytkownika</label><input value={username} onChange={e=>setUsername(e.target.value)} placeholder="np. KnightFox" autoComplete="username"/><label>Hasło (min. 10 znaków)</label><input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••••" autoComplete={mode==="login"?"current-password":"new-password"}/><button className="primary wide" disabled={busy} onClick={auth}>{busy?"Chwila...":mode==="login"?"Zaloguj się":"Utwórz konto"}</button><p className="hint">Bez adresu e-mail. Nick musi być unikalny.</p></div>
-    : <div className="panel account"><span className="eyebrow">SESJA AKTYWNA</span><h2>{username}</h2><p>Twoje partie są przechowywane oddzielnie.</p><button className="ghost" onClick={()=>{setToken("");setHistory([]);}}>Wyloguj</button></div>}
+    : <div className="panel account"><span className="eyebrow">SESJA AKTYWNA</span><h2>{username}</h2><p className="hint">{isAdmin?"Administrator":"Konto użytkownika"}</p><p>Twoje partie są przechowywane oddzielnie.</p><button className="ghost" onClick={()=>{setToken("");setHistory([]);}}>Wyloguj</button></div>}
     </section>
     <section className="workspace">
-      <div className="board-panel panel"><div className="section-head"><div><span className="eyebrow">STUDIO ANALIZY</span><h2>Szachownica</h2></div><span className="live">● LIVE</span></div>
+      <div className="board-panel panel"><div className="section-head"><div><span className="eyebrow">STUDIO GRY</span><h2>Szachownica</h2></div><span className="live">● LIVE</span></div>
       <div className="board"><Chessboard position={game.fen()} onPieceDrop={onDrop} customArrows={arrows} boardWidth={Math.min(520, typeof window!=="undefined"?window.innerWidth-48:520)} /></div>
       <div className="controls"><button className="ghost" onClick={()=>{const n=new Chess(game.fen());n.undo();setGame(n);}}>↶ Cofnij</button><button className="ghost" onClick={reset}>Nowa partia</button><button className="ghost" onClick={save} disabled={!token}>Zapisz partię</button></div>
       <p className="notice">{analysisBusy?"ChessMind analizuje pozycję…":message}</p></div>
       <aside className="side">
-        <div className="panel insight"><span className="eyebrow">CHESSMIND NATIVE ENGINE</span><h2>Analiza na żywo</h2><p className="muted">Własne przeszukiwanie wariantów i ocena pozycji. Odświeża się automatycznie po każdym ruchu.</p>
+        {isAdmin ? <div className="panel insight"><span className="eyebrow">PANEL ADMINISTRATORA</span><h2>Analiza na żywo</h2><p className="muted">Własne przeszukiwanie wariantów i ocena pozycji. Odświeża się automatycznie po każdym ruchu.</p>
           {predictions.length?predictions.map((p:any)=><div className="prediction" key={p.san}><b>{p.rank}. {p.san}</b><strong>{p.score>0?"+":""}{p.score}</strong><small>{p.quality}</small></div>):<div className="empty">{analysisBusy?"Liczenie wariantów…":evaluation?"Brak propozycji dla tej pozycji.":"Oczekiwanie na analizę pozycji."}</div>}
           {evaluation&&<div className="eval"><span>Ocena pozycji (białe)</span><b>{evaluation.evaluation_cp>0?"+":""}{(evaluation.evaluation_cp/100).toFixed(2)}</b><small>Głębokość: {evaluation.depth} • {evaluation.engine}</small></div>}
         </div>
+        : <div className="panel insight"><span className="eyebrow">TRYB GRY</span><h2>Gra w szachy</h2><p className="muted">Analiza silnika jest dostępna wyłącznie na koncie administratora.</p><div className="empty">Wykonuj ruchy na szachownicy. Twoje partie możesz zapisywać na koncie.</div></div>}
         <div className="panel history"><span className="eyebrow">TWOJE ARCHIWUM</span><h2>Ostatnie partie</h2>{history.length?history.slice(0,5).map(g=><div className="game-row" key={g.id}><span>Partia #{g.id}</span><b>{g.result}</b></div>):<div className="empty">Zapisane partie pojawią się tutaj.</div>}</div>
       </aside>
     </section>
