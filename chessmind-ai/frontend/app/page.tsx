@@ -113,7 +113,7 @@ export default function Home() {
           <button className="ghost" onClick={askHint} disabled={!token||game.isGameOver()||game.turn()!=="w"}>Podpowiedz mi ruch</button>
           <div className="empty">{trainingBusy?"AI myśli…":coachText}</div>{hint&&<div className="prediction"><b>Podpowiedź: {hint.san}</b><small>{hint.explanation}</small></div>}
           <p className="hint">Poziomy są orientacyjne. Model dopasowany korzysta z zapisanych partii i wzorców ruchów.</p>
-        </div>
+        </div>}
         <div className="panel insight" style={{display:activeTab==="partia"?"none":"block"}}><span className="eyebrow">{isAdmin?"CHESSMIND NATIVE ENGINE":"CHESSMIND PREDICT"}</span><h2>{isAdmin?"Analiza silnika":"Możliwe decyzje"}</h2><p className="muted">{isAdmin?"Najlepsze ruchy wyliczone przez własny silnik ChessMind.":"Rozkład przewidywanych ludzkich ruchów dla aktualnej pozycji."}</p>
           {nativeMoves.length?nativeMoves.map((p,i)=><div className="prediction" key={p.san}><b>{i+1}. {p.san}</b><strong>{p.score>0?"+":""}{p.score}</strong><small>{p.quality} • {p.from} → {p.to}</small></div>):null}
           {predictions.length?predictions.map((p,i)=><div className="prediction" key={p.san}><b>{i+1}. {p.san}</b><div className="bar"><span style={{width:`${p.probability*100}%`}}/></div><strong>{(p.probability*100).toFixed(1)}%</strong></div>):(!nativeMoves.length?<div className="empty">Wykonaj analizę, aby zobaczyć wyniki.</div>:null)}
