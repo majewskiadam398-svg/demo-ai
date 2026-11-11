@@ -9,14 +9,15 @@ from sqlalchemy import select
 from .db import Base, engine, get_db
 from .models import User, Game
 from .schemas import Credentials, Token, GameIn, GameOut
-from .auth import hash_password, verify_password, make_token, current_user
-from .ai import observe_game, predict_human_moves, evaluate_position
+from .auth import hash_password, verify_password, make_token, current_user, admin_user
+from .ai import observe_game, predict_human_moves, evaluate_position, choose_training_move
 
 Base.metadata.create_all(bind=engine)
 app = FastAPI(title="ChessMind AI API", version="0.1.0")
 cors_origins = [origin.strip() for origin in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",") if origin.strip()]
-app.add_middleware(CORSMiddleware, allow_origins=cors_origins, allow_credentials=True,
-                   allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(CORSMiddleware, allow_origins=cors_origins,
+                   allow_origin_regex=r"https://.*\.vercel\.app",
+                   allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 @app.get("/health")
 def health():
@@ -27,6 +28,9 @@ def register(data: Credentials, db: Session = Depends(get_db)):
     username = data.username.lower()
     if db.scalar(select(User).where(User.username == username)):
         raise HTTPException(409, "Ten nick jest już zajęty")
+    from .config import settings
+    if username == settings.admin_username.lower():
+        raise HTTPException(403, "Ten nick jest zarezerwowany dla administratora")
     user = User(username=username, password_hash=hash_password(data.password))
     db.add(user); db.commit(); db.refresh(user)
     return {"access_token": make_token(user.id)}
@@ -40,7 +44,8 @@ def login(data: Credentials, db: Session = Depends(get_db)):
 
 @app.get("/me")
 def me(user: User = Depends(current_user)):
-    return {"id": user.id, "username": user.username}
+    from .config import settings
+    return {"id": user.id, "username": user.username, "is_admin": user.username.lower() == settings.admin_username.lower()}
 
 @app.get("/games", response_model=list[GameOut])
 def list_games(db: Session = Depends(get_db), user: User = Depends(current_user)):
@@ -72,3 +77,55 @@ def predict(payload: dict, db: Session = Depends(get_db), user: User = Depends(c
             "evaluation": evaluate_position(board),
             "model": "pattern-frequency-v0",
             "warning": "Predykcje są eksperymentalne; brak jeszcze walidowanej skuteczności."}
+
+
+@app.post("/ai/analyze")
+def analyze(payload: dict, user: User = Depends(admin_user)):
+    """Admin-only live analysis endpoint powered by ChessMind's own search."""
+    fen = payload.get("fen", "")
+    try:
+        board = chess.Board(fen)
+        if not board.is_valid():
+            raise ValueError()
+    except Exception:
+        raise HTTPException(400, "Nieprawidłowa pozycja FEN")
+    from .ai import analyze_position
+    result = analyze_position(board, depth=2)
+    result["engine"] = "ChessMind Native Engine"
+    result["note"] = "Własny silnik heurystyczny ChessMind AI; szybka analiza orientacyjna, nie poziom Stockfisha."
+    return result
+
+
+@app.post("/ai/training-move")
+def training_move(payload: dict, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    fen = payload.get("fen", "")
+    difficulty = payload.get("difficulty", "easy")
+    model = payload.get("model", "balanced")
+    if difficulty not in {"easy", "normal", "hard", "impossible"}:
+        raise HTTPException(400, "Nieznany poziom trudności")
+    if model not in {"balanced", "aggressive", "solid", "adaptive"}:
+        raise HTTPException(400, "Nieznany model gry")
+    try:
+        board = chess.Board(fen)
+        if not board.is_valid():
+            raise ValueError()
+    except Exception:
+        raise HTTPException(400, "Nieprawidłowa pozycja FEN")
+    result = choose_training_move(board, difficulty, model, db, user.id)
+    if result is None:
+        return {"move": None, "status": board.result(claim_draw=True)}
+    return result
+
+
+@app.post("/ai/hint")
+def training_hint(payload: dict, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    fen = payload.get("fen", "")
+    try:
+        board = chess.Board(fen)
+        if not board.is_valid() or board.is_game_over(claim_draw=True):
+            raise ValueError()
+    except Exception:
+        raise HTTPException(400, "Nieprawidłowa lub zakończona pozycja")
+    result = choose_training_move(board, "hard", "balanced", db, user.id)
+    return {"uci": result["uci"], "san": result["san"],
+            "explanation": "Podpowiedź: " + result["explanation"]}
