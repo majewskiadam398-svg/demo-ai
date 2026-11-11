@@ -4,6 +4,7 @@ import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const TRAINING_API = process.env.NEXT_PUBLIC_TRAINING_API_URL || API;
 export default function Home() {
   const [token,setToken] = useState("");
   const [isAdmin,setIsAdmin] = useState(false);
@@ -29,6 +30,12 @@ export default function Home() {
     const res = await fetch(API+path,{method:body?"POST":"GET",headers:{"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{})},body:body?JSON.stringify(body):undefined,signal});
     const data = await res.json().catch(()=>({}));
     if(!res.ok) throw new Error(data.detail || "Wystąpił błąd");
+    return data;
+  }
+  async function trainingRequest(path:string, body:any) {
+    const res = await fetch(TRAINING_API+path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(data.detail || "Błąd silnika treningowego");
     return data;
   }
   async function auth() {
@@ -89,7 +96,7 @@ export default function Home() {
     if(!training || !token || game.turn() !== "b" || game.isGameOver()) return;
     let cancelled = false;
     setTrainingBusy(true);
-    request("/ai/training-move",{fen:game.fen(),difficulty,model:trainingModel})
+    trainingRequest("/ai/training-move",{fen:game.fen(),difficulty,model:trainingModel,training_games:history.slice(0,30).map((g:any)=>g.pgn)})
       .then((data)=>{
         if(cancelled || !data.uci) return;
         const next = new Chess(game.fen());
@@ -101,11 +108,11 @@ export default function Home() {
       .catch((e:any)=>{if(!cancelled)setCoachText("Nie udało się wykonać ruchu AI: "+e.message);})
       .finally(()=>{if(!cancelled)setTrainingBusy(false);});
     return ()=>{cancelled=true;};
-  },[game,training,token,difficulty,trainingModel]);
+  },[game,training,token,difficulty,trainingModel,history]);
 
   async function askHint(){
     try {
-      const data=await request("/ai/hint",{fen:game.fen()});
+      const data=await trainingRequest("/ai/hint",{fen:game.fen(),training_games:history.slice(0,30).map((g:any)=>g.pgn)});
       setHint(data);
       setCoachText(data.explanation);
     } catch(e:any) { setCoachText("Nie udało się pobrać podpowiedzi: "+e.message); }
