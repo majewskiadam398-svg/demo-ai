@@ -205,12 +205,18 @@ def choose_training_move(board: chess.Board, difficulty: str = "easy", model: st
                     "explanation": "Wybieram ruch zgodny z Twoimi wcześniejszymi partiami. Model dopasowany analizuje zapisane partie i aktualizuje wzorce po kolejnych grach.",
                     "model": "Twój styl — model adaptacyjny"}
     candidates = []
-    for move in legal:
+    # Search promising root moves first and carry alpha between them. The previous
+    # full-window search repeated much of the same work for every legal root move.
+    ordered_legal = sorted(legal, key=lambda move: _move_order_score(board, move), reverse=True)
+    alpha = -MATE_SCORE
+    for move in ordered_legal:
         san = board.san(move)
         board.push(move)
-        score = -_negamax(board, max(0, depth - 1), -MATE_SCORE, MATE_SCORE, 1)
+        score = -_negamax(board, max(0, depth - 1), -MATE_SCORE, -alpha, 1)
         board.pop()
         candidates.append((move, score, san))
+        if score > alpha:
+            alpha = score
     candidates.sort(key=lambda x: x[1], reverse=True)
     pool = candidates[:max(1, min(len(candidates), 3 if difficulty == "easy" else 2 if difficulty == "normal" else 1))]
     if model == "aggressive":
