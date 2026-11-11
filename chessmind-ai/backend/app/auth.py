@@ -31,3 +31,10 @@ def current_user(creds: HTTPAuthorizationCredentials = Depends(bearer), db: Sess
     if not user:
         raise HTTPException(status_code=401, detail="Konto nie istnieje")
     return user
+
+
+def admin_user(user: User = Depends(current_user)):
+    from .config import settings
+    if user.username.lower() != settings.admin_username.lower():
+        raise HTTPException(status_code=403, detail="Tryb analizy jest dostępny tylko dla administratora")
+    return user
