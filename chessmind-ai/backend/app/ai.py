@@ -145,3 +145,74 @@ def analyze_position(board: chess.Board, depth: int = 2):
         item["score"] = round(item["score_cp"] / 100, 2)
     return {"evaluation_cp": int(_evaluate_white(board)), "best_score_cp": int(best_score),
             "depth": depth, "best_moves": candidates[:3], "status": "ok"}
+
+
+def _training_explanation(board: chess.Board, move: chess.Move) -> str:
+    piece = board.piece_at(move.from_square)
+    san = board.san(move)
+    target = chess.square_name(move.to_square)
+    if board.is_capture(move):
+        victim = board.piece_at(move.to_square)
+        victim_name = {chess.PAWN:"piona", chess.KNIGHT:"skoczka", chess.BISHOP:"gońca", chess.ROOK:"wieżę", chess.QUEEN:"hetmana"}.get(victim.piece_type if victim else 0, "figurę")
+        return f"Ruch {san}: bierze {victim_name} na {target}. Po każdym biciu sprawdź, czy Twoja figura nie zostaje zaatakowana i czy nie oddajesz ważniejszej figury."
+    if board.gives_check(move):
+        return f"Ruch {san} daje szacha. Król przeciwnika musi odpowiedzieć na zagrożenie — sprawdź, czy możesz potem zdobyć materiał lub poprawić ustawienie figur."
+    if piece and piece.piece_type == chess.PAWN and chess.square_rank(move.to_square) in (3, 4):
+        return f"Ruch {san} walczy o centrum. Piony w centrum ograniczają figury przeciwnika i otwierają linie dla gońców oraz hetmana."
+    if piece and piece.piece_type in (chess.KNIGHT, chess.BISHOP):
+        return f"Ruch {san} rozwija figurę. Wyprowadzaj lekkie figury na aktywne pola, kontroluj centrum i przygotuj bezpieczne schronienie dla króla."
+    if piece and piece.piece_type == chess.KING:
+        return f"Ruch {san} poprawia bezpieczeństwo króla. Zwróć uwagę na otwarte linie i możliwe szachy."
+    return f"Ruch {san} poprawia ustawienie figur. Zanim odpowiesz, sprawdź groźby przeciwnika, bezpieczeństwo własnego króla i czy możesz coś zdobyć."
+
+def choose_training_move(board: chess.Board, difficulty: str = "easy", model: str = "balanced",
+                         db: Session | None = None, user_id: int | None = None):
+    """Select a move with ChessMind's own heuristic search; deliberately weaker modes add controlled noise."""
+    import random
+    settings = {
+        "easy": (1, 0.72), "normal": (2, 0.42), "hard": (3, 0.18),
+        "impossible": (3, 0.03), "adaptive": (2, 0.28),
+    }
+    depth, randomness = settings.get(difficulty, settings["easy"])
+    if board.is_game_over(claim_draw=True):
+        return None
+    legal = list(board.legal_moves)
+    if model == "adaptive" and db is not None and user_id is not None:
+        key = position_key(board)
+        rows = db.query(MovePattern).filter_by(user_id=user_id, feature_key=key).all()
+        learned = {row.san: row.count for row in rows}
+        if learned:
+            move = max(legal, key=lambda m: learned.get(board.san(m), 0))
+            return {"uci": move.uci(), "san": board.san(move),
+                    "explanation": "Wybieram ruch zgodny z Twoimi wcześniejszymi partiami w tej pozycji. Model dopasowany uczy się na zapisanych przez Ciebie ruchach.",
+                    "model": "Twój styl — model adaptacyjny"}
+    candidates = []
+    for move in legal:
+        san = board.san(move)
+        board.push(move)
+        score = -_negamax(board, max(0, depth - 1), -MATE_SCORE, MATE_SCORE, 1)
+        board.pop()
+        candidates.append((move, score, san))
+    candidates.sort(key=lambda x: x[1], reverse=True)
+    pool = candidates[:max(1, min(len(candidates), 3 if difficulty == "easy" else 2 if difficulty == "normal" else 1))]
+    if model == "aggressive":
+        tactical = [x for x in candidates if board.is_capture(x[0]) or board.gives_check(x[0])]
+        if tactical:
+            pool = tactical[:max(1, len(pool))]
+    elif model == "solid":
+        safe = []
+        for item in candidates:
+            move = item[0]
+            board.push(move)
+            attacked = board.is_check() or any(board.is_attacked_by(not board.turn, sq) for sq in [move.to_square])
+            board.pop()
+            if not attacked: safe.append(item)
+        if safe: pool = safe[:max(1, len(pool))]
+    if len(pool) > 1 and random.random() < randomness:
+        chosen = random.choice(pool)
+    else:
+        chosen = pool[0]
+    move = chosen[0]
+    return {"uci": move.uci(), "san": chosen[2],
+            "explanation": _training_explanation(board, move),
+            "model": {"balanced":"ChessMind — zrównoważony","aggressive":"ChessMind — taktyczny","solid":"ChessMind — pozycyjny","adaptive":"Twój styl — model adaptacyjny"}.get(model, "ChessMind — zrównoważony")}
