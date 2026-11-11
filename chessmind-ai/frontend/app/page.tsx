@@ -65,7 +65,7 @@ export default function Home() {
     } catch(e:any){setMessage(e.message);}
   }
   function reset(){setGame(new Chess());setPredictions([]);setEvaluation(null);}
-  const arrows = predictions.map((p:any)=>[p.from,p.to,p.color]);
+  const arrows = predictions.map((p:any)=>[p.from,p.to,p.color] as [any, any, any]);
   return <main className="shell">
     <header><div className="brand"><span className="mark">♞</span><div><b>ChessMind <i>AI</i></b><small>ANALIZA • PREDYKCJA • ROZWÓJ</small></div></div><span className="status">● SYSTEM MVP</span></header>
     <section className="hero"><div><p className="eyebrow">TWOJE SZACHY. GŁĘBSZE ZROZUMIENIE.</p><h1>Myśl kilka ruchów<br/><em>przed przeciwnikiem.</em></h1><p className="sub">Analizuj partie, poznawaj wzorce ludzkich decyzji i buduj własny profil treningowy.</p></div>
