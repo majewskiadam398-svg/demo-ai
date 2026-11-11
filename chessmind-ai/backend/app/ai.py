@@ -5,7 +5,6 @@ from sqlalchemy.orm import Session
 from .models import MovePattern
 
 def position_key(board: chess.Board) -> str:
-    # Stabilny klucz: taki sam po restarcie procesu, bez danych osobowych.
     payload = f"{board.board_fen()}|{int(board.turn)}|{int(board.castling_rights != 0)}"
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
@@ -50,25 +49,17 @@ def evaluate_position(board: chess.Board):
     return {"material_balance_white": round(score, 2),
             "note": "Ocena materiałowa MVP; nie zastępuje analizy silnikiem szachowym."}
 
-
-# --- ChessMind native search engine (no Stockfish or external engine) ---
 ENGINE_VALUES = {
-    chess.PAWN: 100,
-    chess.KNIGHT: 320,
-    chess.BISHOP: 335,
-    chess.ROOK: 500,
-    chess.QUEEN: 900,
-    chess.KING: 0,
+    chess.PAWN: 100, chess.KNIGHT: 320, chess.BISHOP: 335,
+    chess.ROOK: 500, chess.QUEEN: 900, chess.KING: 0,
 }
 MATE_SCORE = 100000
 
 def _evaluate_white(board: chess.Board) -> int:
-    """Heuristic evaluation in centipawns from White's point of view."""
     if board.is_checkmate():
         return -MATE_SCORE if board.turn == chess.WHITE else MATE_SCORE
     if board.is_stalemate() or board.is_insufficient_material() or board.can_claim_draw():
         return 0
-
     score = 0
     for square, piece in board.piece_map().items():
         value = ENGINE_VALUES[piece.piece_type]
@@ -87,8 +78,6 @@ def _evaluate_white(board: chess.Board) -> int:
             positional = -int((7 - center_distance) * 4)
         signed = value + positional
         score += signed if piece.color == chess.WHITE else -signed
-
-    # Small mobility term; legal move generation is already available here.
     mobility = board.legal_moves.count()
     score += mobility * (2 if board.turn == chess.WHITE else -2)
     return score
@@ -115,7 +104,6 @@ def _negamax(board: chess.Board, depth: int, alpha: int, beta: int, ply: int = 0
     if depth <= 0:
         value = _evaluate_white(board)
         return value if board.turn == chess.WHITE else -value
-
     best = -MATE_SCORE
     moves = sorted(list(board.legal_moves), key=lambda m: _move_order_score(board, m), reverse=True)
     for move in moves:
@@ -130,27 +118,23 @@ def _negamax(board: chess.Board, depth: int, alpha: int, beta: int, ply: int = 0
             break
     return best
 
-def analyze_position(board: chess.Board, depth: int = 3):
-    """Return principal candidate moves from the built-in alpha-beta search."""
+def analyze_position(board: chess.Board, depth: int = 2):
+    """Fast heuristic search: depth 2 and a bounded root candidate set for live UI."""
     if board.is_game_over(claim_draw=True):
         return {"evaluation_cp": _evaluate_white(board), "depth": depth, "best_moves": [], "status": board.result(claim_draw=True)}
-
     root_turn = board.turn
-    candidates = []
     moves = sorted(list(board.legal_moves), key=lambda m: _move_order_score(board, m), reverse=True)
+    # Bound work in unusually wide positions so live analysis remains responsive.
+    moves = moves[:12]
+    candidates = []
     for move in moves:
         san = board.san(move)
         board.push(move)
         score_for_moving_side = -_negamax(board, depth - 1, -MATE_SCORE, MATE_SCORE, 1)
         board.pop()
         score_white = score_for_moving_side if root_turn == chess.WHITE else -score_for_moving_side
-        candidates.append({
-            "from": chess.square_name(move.from_square),
-            "to": chess.square_name(move.to_square),
-            "san": san,
-            "score_cp": int(score_white),
-        })
-
+        candidates.append({"from": chess.square_name(move.from_square), "to": chess.square_name(move.to_square),
+                           "san": san, "score_cp": int(score_white)})
     candidates.sort(key=lambda item: item["score_cp"], reverse=(root_turn == chess.WHITE))
     best_score = candidates[0]["score_cp"] if candidates else _evaluate_white(board)
     palette = ["#16a34a", "#2563eb", "#0d9488"]
@@ -159,10 +143,5 @@ def analyze_position(board: chess.Board, depth: int = 3):
         item["color"] = palette[index]
         item["quality"] = "najlepszy" if index == 0 else "alternatywa"
         item["score"] = round(item["score_cp"] / 100, 2)
-    return {
-        "evaluation_cp": int(_evaluate_white(board)),
-        "best_score_cp": int(best_score),
-        "depth": depth,
-        "best_moves": candidates[:3],
-        "status": "ok",
-    }
+    return {"evaluation_cp": int(_evaluate_white(board)), "best_score_cp": int(best_score),
+            "depth": depth, "best_moves": candidates[:3], "status": "ok"}
