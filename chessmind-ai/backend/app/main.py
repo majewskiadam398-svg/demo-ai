@@ -72,3 +72,20 @@ def predict(payload: dict, db: Session = Depends(get_db), user: User = Depends(c
             "evaluation": evaluate_position(board),
             "model": "pattern-frequency-v0",
             "warning": "Predykcje są eksperymentalne; brak jeszcze walidowanej skuteczności."}
+
+
+@app.post("/ai/analyze")
+def analyze(payload: dict):
+    """Public live analysis endpoint powered by ChessMind's own search."""
+    fen = payload.get("fen", "")
+    try:
+        board = chess.Board(fen)
+        if not board.is_valid():
+            raise ValueError()
+    except Exception:
+        raise HTTPException(400, "Nieprawidłowa pozycja FEN")
+    from .ai import analyze_position
+    result = analyze_position(board, depth=3)
+    result["engine"] = "ChessMind Native Engine"
+    result["note"] = "Własny silnik heurystyczny ChessMind AI; wynik orientacyjny, nie poziom Stockfisha."
+    return result
