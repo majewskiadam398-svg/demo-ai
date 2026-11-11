@@ -44,7 +44,7 @@ def login(data: Credentials, db: Session = Depends(get_db)):
 
 @app.get("/me")
 def me(user: User = Depends(current_user)):
-    return {"id": user.id, "username": user.username}
+    return {"id": user.id, "username": user.username, "is_admin": user.username.lower() == "piniu"}
 
 @app.get("/games", response_model=list[GameOut])
 def list_games(db: Session = Depends(get_db), user: User = Depends(current_user)):
